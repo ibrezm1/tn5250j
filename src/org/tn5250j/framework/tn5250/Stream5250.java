@@ -27,8 +27,6 @@ package org.tn5250j.framework.tn5250;
 
 public class Stream5250 {
 
-    public static final int OPCODE_OFFSET = 9;
-
     public int streamSize;
     public int opCode;
     public int dataStart;
@@ -55,20 +53,20 @@ public class Stream5250 {
     /**
      * This method takes a byte array and initializes the object information
      *    to be used.
-     *
+     * 
      * @param abyte0
      */
     public void initialize(byte abyte0[]) {
-
+       
      buffer = abyte0;
      // size without end of record 0xFF 0xEF
      streamSize = (abyte0[0] & 0xff) << 8 | abyte0[1] & 0xff;
-     opCode = abyte0[OPCODE_OFFSET];
+     opCode = abyte0[9];
      dataStart = 6 + abyte0[6];
      pos = dataStart;
-
+       
     }
-
+    
     public final int getOpCode() {
         return opCode;
     }

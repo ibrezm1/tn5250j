@@ -21,10 +21,25 @@
  */
 package org.tn5250j;
 
-import java.awt.*;
+import java.io.*;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Frame;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.StringSelection;
-import java.awt.event.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.ComponentEvent;
+import java.awt.event.ComponentListener;
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.Vector;
 
 import javax.swing.JButton;
@@ -46,47 +61,53 @@ import org.tn5250j.framework.tn5250.Screen5250;
 import org.tn5250j.framework.tn5250.tnvt;
 import org.tn5250j.gui.ConfirmTabCloseDialog;
 import org.tn5250j.keyboard.KeyboardHandler;
-import org.tn5250j.keyboard.KeyMnemonicSerializer;
 import org.tn5250j.mailtools.SendEMailDialog;
-import org.tn5250j.sessionsettings.SessionSettings;
 import org.tn5250j.tools.LangTool;
 import org.tn5250j.tools.Macronizer;
 import org.tn5250j.tools.logging.TN5250jLogFactory;
 import org.tn5250j.tools.logging.TN5250jLogger;
-
-import static org.tn5250j.SessionConfig.*;
-import static org.tn5250j.keyboard.KeyMnemonic.ENTER;
+import org.tn5250j.tools.encoder.EncodeComponent;
 
 /**
  * A host GUI session
  * (Hint: old name was SessionGUI)
  */
-public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionConfigListener, SessionListener {
+public class SessionPanel extends JPanel implements ComponentListener,
+ActionListener,
+RubberBandCanvasIF,
+SessionConfigListener,
+SessionListener {
 
 	private static final long serialVersionUID = 1L;
 
 	private boolean firstScreen;
 	private char[] signonSave;
 
+	private BorderLayout borderLayout1 = new BorderLayout();
 	private Screen5250 screen;
 	protected Session5250 session;
 	private GuiGraphicBuffer guiGraBuf;
 	protected TNRubberBand rubberband;
-	private KeypadPanel keypadPanel;
+	private JPanel s = new JPanel();
+	private KeyPad keyPad = new KeyPad();
 	private String newMacName;
-	private Vector<SessionJumpListener> sessionJumpListeners = null;
+	private Vector<SessionJumpListener> listeners = null;
 	private Vector<EmulatorActionListener> actionListeners = null;
+	private SessionJumpEvent jumpEvent;
+	public String RunningMacroName;
 	private boolean macroRunning;
 	private boolean stopMacro;
 	private boolean doubleClick;
 	protected SessionConfig sesConfig;
 	protected KeyboardHandler keyHandler;
-	private final SessionScroller scroller = new SessionScroller();
+	protected final SessionScroller scroller = new SessionScroller();
 
 	private final TN5250jLogger log = TN5250jLogFactory.getLogger(this.getClass());
 
 	public SessionPanel (Session5250 session) {
-		this.keypadPanel = new KeypadPanel(session.getConfiguration().getConfig());
+		//Construct the frame
+		//, SessionConfig config) {
+
 		this.session = session;
 
 		sesConfig = session.getConfiguration();
@@ -101,21 +122,34 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 		session.getConfiguration().addSessionConfigListener(this);
 		session.addSessionListener(this);
 	}
+	public void SaveScreentoFile(String fpath) {
+		File file = new File(fpath);
+	     try {
+            EncodeComponent.encode(EncodeComponent.PNG,this, file);
+         }
+         catch (Exception e) {
+         }
+	}
 
 	//Component initialization
 	private void jbInit() throws Exception  {
-		this.setLayout(new BorderLayout());
+		this.setLayout(borderLayout1);
+
+		//	      this.setOpaque(false);
+		//	      setDoubleBuffered(true);
+		s.setOpaque(false);
+		s.setDoubleBuffered(false);
+
 		session.setGUI(this);
+
+		//	      screen = new Screen5250(this,sesConfig);
 		screen = session.getScreen();
 
-		this.addComponentListener(new ComponentAdapter() {
-			@Override
-			public void componentResized(ComponentEvent e) {
-				resizeMe();
-			}
-		});
+		this.addComponentListener(this);
 
-		ensureGuiGraphicBufferInitialized();
+		if (guiGraBuf == null) {
+			checkOffScreenImage();
+		}
 
 		setRubberBand(new TNRubberBand(this));
 		keyHandler = KeyboardHandler.getKeyboardHandlerInstance(session);
@@ -143,6 +177,11 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 				}
 
 			}
+			@Override
+			public void mouseReleased(MouseEvent e) {
+				//	            System.out.println("Mouse Released");
+
+			}
 
 			@Override
 			public void mouseClicked(MouseEvent e) {
@@ -152,7 +191,8 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 				}
 
 				if (e.getClickCount() == 2 & doubleClick) {
-					screen.sendKeys(ENTER);
+
+					screen.sendKeys("[enter]");
 				}
 				else {
 					int pos = guiGraBuf.getPosFromView(e.getX(), e.getY());
@@ -177,26 +217,37 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 
 		});
 
-		if (YES.equals(sesConfig.getStringProperty("mouseWheel"))) {
+		if (sesConfig.getStringProperty("mouseWheel").equals("Yes")) {
 			scroller.addMouseWheelListener(this);
 		}
 
 		log.debug("Initializing macros");
 		Macronizer.init();
 
-		keypadPanel.addActionListener(new ActionListener() {
-			@Override
-			public void actionPerformed(ActionEvent e) {
-				screen.sendKeys(((JButton) e.getSource()).getActionCommand());
-				getFocusForMe();
-			}
-		});
-		keypadPanel.setVisible(sesConfig.getConfig().isKeypadEnabled());
-		this.add(keypadPanel,BorderLayout.SOUTH);
+		keyPad.addActionListener(this);
+		if (sesConfig.getStringProperty("keypad").equals("Yes"))
+			keyPad.setVisible(true);
+		else
+			keyPad.setVisible(false);
+
+		// Warning do not change the the order of the adding of keypad and
+		//    the screen.  This will cause resizing problems because it will
+		//    resize the screen first and during the resize we need to calculate
+		//    the bouding area based on the height of the keyPad.
+		//    See resizeMe() and getDrawingBounds()
+		this.add(keyPad,BorderLayout.SOUTH);
+		this.add(s,BorderLayout.CENTER);
 
 		this.requestFocus();
+		jumpEvent = new SessionJumpEvent(this);
 
-		doubleClick = YES.equals(sesConfig.getStringProperty("doubleClick"));
+
+		// check if double click sends enter
+		if (sesConfig.getStringProperty("doubleClick").equals("Yes"))
+			doubleClick = true;
+		else
+			doubleClick = false;
+
 	}
 
 	public void setRunningHeadless(boolean headless) {
@@ -207,7 +258,9 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 		else {
 			screen.getOIA().addOIAListener(guiGraBuf);
 			screen.addScreenListener(guiGraBuf);
+
 		}
+
 	}
 
 	@Override
@@ -312,6 +365,7 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 	 * Asks the user to confirm tab close,
 	 * only if configured (option 'confirm tab close')
 	 *
+	 * @param sesConfig
 	 * @return true if tab should be closed, false if not
 	 */
 	private boolean confirmTabClose() {
@@ -319,7 +373,7 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 		if (session.getConfiguration().isPropertyExists("confirmTabClose")) {
 			this.requestFocus();
 			final ConfirmTabCloseDialog tabclsdlg = new ConfirmTabCloseDialog(this);
-			if(YES.equals(session.getConfiguration().getStringProperty("confirmTabClose"))) {
+			if(session.getConfiguration().getStringProperty("confirmTabClose").equals("Yes")) {
 				if(!tabclsdlg.show()) {
 					result = false;
 				}
@@ -338,7 +392,7 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 	private boolean confirmSignOffClose() {
 
 		if (sesConfig.isPropertyExists("confirmSignoff") &&
-				YES.equals(sesConfig.getStringProperty("confirmSignoff"))) {
+				sesConfig.getStringProperty("confirmSignoff").equals("Yes")) {
 			this.requestFocus();
 			int result = JOptionPane.showConfirmDialog(
 					this.getParent(),            // the parent that the dialog blocks
@@ -370,37 +424,68 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 	@Override
 	public boolean isManagingFocus() { return true; }
 
-	@Override
-	public void onConfigChanged(SessionConfigEvent configEvent) {
-		final String configName = configEvent.getPropertyName();
+	public JPanel getDrawingCanvas() {
 
-		if (CONFIG_KEYPAD_ENABLED.equals(configName)) {
-			keypadPanel.setVisible(YES.equals(configEvent.getNewValue()));
+		return s;
+
+	}
+
+	@Override
+	public void actionPerformed(ActionEvent actionevent) {
+
+		Object obj = actionevent.getSource();
+		String ac = ((JButton)obj).getActionCommand();
+
+		if (ac.equals("NXTPAD"))
+			keyPad.nextPad();
+		else
+			screen.sendKeys(ac);
+
+
+		getFocusForMe();
+
+	}
+
+	/**
+	 * Update the configuration settings
+	 * @param pce
+	 */
+	@Override
+	public void onConfigChanged(SessionConfigEvent pce) {
+
+		String pn = pce.getPropertyName();
+
+		if (pn.equals("keypad")) {
+			if (((String)pce.getNewValue()).equals("Yes")) {
+				keyPad.setVisible(true);
+			}
+			else {
+				keyPad.setVisible(false);
+			}
 			this.validate();
 		}
 
-		if (CONFIG_KEYPAD_MNEMONICS.equals(configName)) {
-			keypadPanel.reInitializeButtons(new KeyMnemonicSerializer().deserialize((String) configEvent.getNewValue()));
+		if (pn.equals("doubleClick")) {
+			if (((String)pce.getNewValue()).equals("Yes")) {
+				doubleClick = true;
+			}
+			else {
+				doubleClick = false;
+			}
 		}
 
-		if (CONFIG_KEYPAD_FONT_SIZE.equals(configName)) {
-			keypadPanel.updateButtonFontSize(Float.parseFloat((String)configEvent.getNewValue()));
-		}
-
-		if ("doubleClick".equals(configName)) {
-			doubleClick = YES.equals(configEvent.getNewValue());
-		}
-
-		if ("mouseWheel".equals(configName)) {
-			if (YES.equals(configEvent.getNewValue())) {
+		if (pn.equals("mouseWheel")) {
+			if (((String)pce.getNewValue()).equals("Yes")) {
 				scroller.addMouseWheelListener(this);
-			}	else {
+			}
+			else {
 				scroller.removeMouseWheelListener(this);
 			}
 		}
 
 		resizeMe();
 		repaint();
+
 	}
 
 	public tnvt getVT() {
@@ -419,6 +504,11 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 
 	public void startDuplicateSession() {
 		fireEmulatorAction(EmulatorActionEvent.START_DUPLICATE);
+	}
+
+	public void sendAidKey(int whichOne) {
+
+		session.getVT().sendAidKey(whichOne);
 	}
 
 	/**
@@ -454,11 +544,15 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 	}
 
 	public void nextSession() {
+
 		fireSessionJump(TN5250jConstants.JUMP_NEXT);
+
 	}
 
 	public void prevSession() {
+
 		fireSessionJump(TN5250jConstants.JUMP_PREVIOUS);
+
 	}
 
 	/**
@@ -466,13 +560,14 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 	 *
 	 * @param dir  The direction to jump.
 	 */
-	private void fireSessionJump(int dir) {
-		if (sessionJumpListeners != null) {
-			int size = sessionJumpListeners.size();
-			final SessionJumpEvent jumpEvent = new SessionJumpEvent(this);
-			jumpEvent.setJumpDirection(dir);
+	protected void fireSessionJump(int dir) {
+
+		if (listeners != null) {
+			int size = listeners.size();
 			for (int i = 0; i < size; i++) {
-				SessionJumpListener target = sessionJumpListeners.elementAt(i);
+				SessionJumpListener target =
+					listeners.elementAt(i);
+				jumpEvent.setJumpDirection(dir);
 				target.onSessionJump(jumpEvent);
 			}
 		}
@@ -542,12 +637,20 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 	 *
 	 */
 	public void actionAttributes() {
-		new SessionSettings((Frame)SwingUtilities.getRoot(this), sesConfig).showIt();
+
+		SessionAttributes sa = new SessionAttributes((Frame)SwingUtilities.getRoot(this),
+				sesConfig);
+		sa.showIt();
+
 		getFocusForMe();
+		sa = null;
 	}
 
-	private void actionPopup(MouseEvent me) {
+	private void actionPopup (MouseEvent me) {
+
 		new SessionPopup(this,me);
+
+
 	}
 
 	public void actionSpool() {
@@ -567,11 +670,19 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 	}
 
 	public void executeMacro(ActionEvent ae) {
+
 		executeMacro(ae.getActionCommand());
+
 	}
 
 	public void executeMacro(String macro) {
+		RunningMacroName = macro;
 		Macronizer.invoke(macro,this);
+
+	}
+	
+	public String getRunningMacro(){
+		return RunningMacroName;
 	}
 
 	protected void stopRecordingMe() {
@@ -616,9 +727,9 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 	public Rectangle getDrawingBounds() {
 
 		Rectangle r = this.getBounds();
-		if (keypadPanel != null && keypadPanel.isVisible())
+		if (keyPad != null && keyPad.isVisible())
 			//	         r.height -= (int)(keyPad.getHeight() * 1.25);
-			r.height -= (keypadPanel.getHeight());
+			r.height -= (keyPad.getHeight());
 
 		r.setSize(r.width,r.height);
 
@@ -627,10 +738,33 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 	}
 
 	@Override
+	public void componentHidden(ComponentEvent e) {
+	}
+
+	@Override
+	public void componentMoved(ComponentEvent e) {
+	}
+
+	@Override
+	public void componentResized(ComponentEvent e) {
+
+		resizeMe();
+	}
+
+	@Override
+	public void componentShown(ComponentEvent e) {
+
+
+	}
+
+	@Override
 	protected void paintComponent(Graphics g) {
 		log.debug("paint from screen");
 
-		ensureGuiGraphicBufferInitialized();
+		if (guiGraBuf == null) {
+			checkOffScreenImage();
+		}
+		//	      screen.paintComponent3(g);
 
 		Graphics2D g2 = (Graphics2D) g;
 		if (rubberband.isAreaSelected() && !rubberband.isDragging()) {
@@ -684,11 +818,35 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 		screen.setCursorActive(true);
 	}
 
-	private void ensureGuiGraphicBufferInitialized() {
+	/**
+	 *
+	 * This routine will make sure we have something to draw on
+	 *
+	 */
+	private void checkOffScreenImage() {
+
+		// do we have something already?
 		if (guiGraBuf == null) {
-			guiGraBuf = new GuiGraphicBuffer(screen, this, sesConfig);
+
+			guiGraBuf = new GuiGraphicBuffer(screen,this,sesConfig);
+
+			//				if (antialiased) {
+			//					bi.setUseAntialias(true);
+			//				}
+
+			// allocate a buffer Image with appropriate size
 			guiGraBuf.getImageBuffer(0, 0);
+
+			// fill in the areas
+			//	            tArea = new Rectangle2D.Float(0, 0, 0, 0);
+			//	            cArea = new Rectangle2D.Float(0, 0, 0, 0);
+			//	            aArea = new Rectangle2D.Float(0, 0, 0, 0);
+			//	            sArea = new Rectangle2D.Float(0, 0, 0, 0);
+			//
+			//	            // Draw Operator Information Area
+			//	            drawOIA();
 		}
+
 	}
 
 	/**
@@ -739,10 +897,10 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 	 */
 	public synchronized void addSessionJumpListener(SessionJumpListener listener) {
 
-		if (sessionJumpListeners == null) {
-			sessionJumpListeners = new java.util.Vector<SessionJumpListener>(3);
+		if (listeners == null) {
+			listeners = new java.util.Vector<SessionJumpListener>(3);
 		}
-		sessionJumpListeners.addElement(listener);
+		listeners.addElement(listener);
 
 	}
 
@@ -752,10 +910,10 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 	 * @param listener  The SessionJumpListener to be removed
 	 */
 	public synchronized void removeSessionJumpListener(SessionJumpListener listener) {
-		if (sessionJumpListeners == null) {
+		if (listeners == null) {
 			return;
 		}
-		sessionJumpListeners.removeElement(listener);
+		listeners.removeElement(listener);
 
 	}
 
@@ -798,11 +956,14 @@ public class SessionPanel extends JPanel implements RubberBandCanvasIF, SessionC
 	 */
 	@Override
 	public Graphics getDrawingGraphics(){
+
 		return guiGraBuf.getDrawingArea();
 	}
 
 	protected final void setRubberBand(TNRubberBand newValue) {
+
 		rubberband = newValue;
+
 	}
 
 	public Rect getBoundingArea() {

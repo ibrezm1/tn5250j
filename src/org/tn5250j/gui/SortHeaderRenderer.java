@@ -58,3 +58,4 @@ public static Icon NONSORTED =  new SortArrowIcon(SortArrowIcon.NONE);
       return this;
    }
 }
+

@@ -121,7 +121,7 @@ SessionJumpListener {
 		if(e.getID() == WindowEvent.WINDOW_CLOSING) {
 			final int oldidx = sessTabbedPane.getSelectedIndex();
 			boolean close = true;
-
+			
 			if (hideTabBar && sessTabbedPane.getTabCount() == 0) {
 				 for (int i=0,len=this.getContentPane().getComponentCount(); i < len; i++) {
 					 if (this.getContentPane().getComponent(i) instanceof SessionPanel) {
@@ -131,7 +131,7 @@ SessionJumpListener {
 					 }
 				 }
 			}
-
+			
 			for (int i=0,len=sessTabbedPane.getTabCount(); i<len && close; i++) {
 				sessTabbedPane.setSelectedIndex(i);
 				updateSessionTitle();
@@ -227,14 +227,14 @@ SessionJumpListener {
 		 if (session != null && session.isConnected()) {
 			 final String name = determineTabName(session);
 			 if (sequence - 1 > 0)
-				 setTitle(name + " - tn5250j <" + sequence + ">");
+				 setTitle(name + " - swift400 <" + sequence + ">");
 			 else
-				 setTitle(name + " - tn5250j");
+				 setTitle(name + " - swift400");
 		 } else {
 			 if (sequence - 1 > 0)
-				 setTitle("tn5250j <" + sequence + ">");
+				 setTitle("swift400 <" + sequence + ">");
 			 else
-				 setTitle("tn5250j");
+				 setTitle("swift400");
 		 }
 	 }
 

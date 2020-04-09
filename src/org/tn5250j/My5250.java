@@ -35,6 +35,7 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
@@ -44,7 +45,6 @@ import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.UIManager.LookAndFeelInfo;
 
-import org.tn5250j.connectdialog.ConnectDialog;
 import org.tn5250j.event.BootEvent;
 import org.tn5250j.event.BootListener;
 import org.tn5250j.event.EmulatorActionEvent;
@@ -64,7 +64,7 @@ import org.tn5250j.tools.logging.TN5250jLogger;
 public class My5250 implements BootListener, SessionListener, EmulatorActionListener {
 
 	private static final String PARAM_START_SESSION = "-s";
-
+	
 	private GUIViewInterface frame1;
 	private String[] sessionArgs = null;
 	private static Properties sessions = new Properties();
@@ -72,8 +72,9 @@ public class My5250 implements BootListener, SessionListener, EmulatorActionList
 	private SessionManager manager;
 	private static List<GUIViewInterface> frames;
 	private TN5250jSplashScreen splash;
+	public String Macrotorun = "#";
 	private int step;
-	private StringBuilder viewNamesForNextStartBuilder = null;
+	StringBuilder viewNamesForNextStartBuilder = null;
 
 	private TN5250jLogger log = TN5250jLogFactory.getLogger(this.getClass());
 
@@ -238,6 +239,8 @@ public class My5250 implements BootListener, SessionListener, EmulatorActionList
 	}
 
 	static public void main(String[] args) {
+	
+	
 
 		if (!isSpecified("-nc",args)) {
 
@@ -259,12 +262,16 @@ public class My5250 implements BootListener, SessionListener, EmulatorActionList
 		}
 
 		My5250 m = new My5250();
+		
+		if (isSpecified("-m",args))
+				m.Macrotorun = getParm("-m",args);
 
 		if (strapper != null)
 			strapper.addBootListener(m);
 
 		if (args.length > 0) {
 
+		
 			if (isSpecified("-width",args) ||
 					isSpecified("-height",args)) {
 				int width = m.frame1.getWidth();
@@ -277,6 +284,7 @@ public class My5250 implements BootListener, SessionListener, EmulatorActionList
 					height = Integer.parseInt(My5250.getParm("-height",args));
 				}
 
+				
 				m.frame1.setSize(width,height);
 				m.frame1.centerFrame();
 
@@ -314,7 +322,7 @@ public class My5250 implements BootListener, SessionListener, EmulatorActionList
 		else {
 			LangTool.init();
 		}
-
+		
 		List<String> lastViewNames = new ArrayList<String>();
 		lastViewNames.addAll(loadLastSessionViewNames());
 		lastViewNames.addAll(loadLastSessionViewNamesFrom(args));
@@ -399,7 +407,7 @@ public class My5250 implements BootListener, SessionListener, EmulatorActionList
 		}
 		return result;
 	}
-
+	
 	private static boolean containsNotOnlyNullValues(String[] stringArray) {
 		if (stringArray != null) {
 			for (String s : stringArray) {
@@ -535,8 +543,8 @@ public class My5250 implements BootListener, SessionListener, EmulatorActionList
 		sesProps.put(TN5250jConstants.SESSION_HOST,session);
 
 		if (isSpecified("-e",args))
-			sesProps.put(TN5250jConstants.SESSION_TN_ENHANCED,"1");
-
+			sesProps.put(TN5250jConstants.SESSION_TN_ENHANCED,"1");	
+			
 		if (isSpecified("-p",args)) {
 			sesProps.put(TN5250jConstants.SESSION_HOST_PORT,getParm("-p",args));
 		}
@@ -552,7 +560,14 @@ public class My5250 implements BootListener, SessionListener, EmulatorActionList
 
 		if (isSpecified("-t", args))
 			sesProps.put(TN5250jConstants.SESSION_TERM_NAME_SYSTEM, "1");
-
+			
+		
+		if (Macrotorun != "#"){
+			log.warn("Macro to run :"+ Macrotorun);
+			sesProps.put(TN5250jConstants.MACRO,Macrotorun);
+		}	
+	
+			
 		if (isSpecified("-132",args))
 			sesProps.put(TN5250jConstants.SESSION_SCREEN_SIZE,TN5250jConstants.SCREEN_SIZE_27X132_STR);
 		else
@@ -600,6 +615,8 @@ public class My5250 implements BootListener, SessionListener, EmulatorActionList
 		if (isSpecified("-hb",args))
 			sesProps.put(TN5250jConstants.SESSION_HEART_BEAT,"1");
 
+
+			
 		int sessionCount = manager.getSessions().getCount();
 
 		Session5250 s2 = manager.openSession(sesProps,propFileName,sel);
@@ -882,7 +899,7 @@ public class My5250 implements BootListener, SessionListener, EmulatorActionList
 		 splash.updateProgress(++step);
 
 	 }
-
+	 
 	 static Properties getSessions() {
 		 return sessions;
 	 }

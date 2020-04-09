@@ -1,6 +1,6 @@
 /**
- * $Id$
- *
+ * $Id: ConfirmTabCloseDialog.java 1167 2011-06-07 22:07:53Z master_jaf $
+ * 
  * Title: tn5250J
  * Copyright:   Copyright (c) 2001,2009
  * Company:

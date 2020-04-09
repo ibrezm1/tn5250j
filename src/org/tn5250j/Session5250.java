@@ -27,6 +27,7 @@ import java.util.Properties;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+
 import org.tn5250j.event.SessionChangeEvent;
 import org.tn5250j.event.SessionListener;
 import org.tn5250j.framework.common.SessionManager;
@@ -35,6 +36,8 @@ import org.tn5250j.framework.tn5250.tnvt;
 import org.tn5250j.gui.SystemRequestDialog;
 import org.tn5250j.interfaces.ScanListener;
 import org.tn5250j.interfaces.SessionInterface;
+
+
 
 /**
  * A host session
@@ -236,6 +239,11 @@ public class Session5250 implements SessionInterface {
 		if (sesProps.containsKey(TN5250jConstants.SESSION_DEVICE_NAME))
 			vt.setDeviceName(sesProps.getProperty(TN5250jConstants.SESSION_DEVICE_NAME));
 
+		if (sesProps.containsKey(TN5250jConstants.MACRO))
+			sesConfig.setProperty("connectMacro",sesProps.getProperty(TN5250jConstants.MACRO));
+			
+			
+			
 		if (sesProps.containsKey(TN5250jConstants.SESSION_HOST_PORT)) {
 			port = Integer.parseInt(sesProps.getProperty(TN5250jConstants.SESSION_HOST_PORT));
 		}

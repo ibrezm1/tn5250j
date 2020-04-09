@@ -454,9 +454,7 @@ public class FTP5250Prot {
       }
       finally {
          try {
-        	 if(ss!=null){
-        		 ss.close();
-        	 }
+             ss.close();
          }
          catch(IOException ioexception1) {
              printFTPInfo("createPassiveSocket.close() exception!" + ioexception1);

@@ -133,3 +133,4 @@ public abstract class AbstractImageEncoder implements Encoder {
    }
 
 }
+

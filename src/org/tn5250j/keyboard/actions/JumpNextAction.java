@@ -1,4 +1,4 @@
-/*
+/**
  * Title: JumpNextAction.java
  * Copyright:   Copyright (c) 2001,2002
  * Company:
@@ -25,30 +25,32 @@
  */
 package org.tn5250j.keyboard.actions;
 
-import org.tn5250j.SessionPanel;
-import org.tn5250j.keyboard.KeyMapper;
-
-import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 
-import static org.tn5250j.keyboard.KeyMnemonic.JUMP_NEXT;
+import javax.swing.KeyStroke;
+
+import org.tn5250j.SessionPanel;
+import org.tn5250j.TN5250jConstants;
+import org.tn5250j.keyboard.KeyMapper;
 
 /**
  * Jump to the next session action
  */
 public class JumpNextAction extends EmulatorAction {
 
-  private static final long serialVersionUID = 1L;
+   private static final long serialVersionUID = 1L;
 
-  public JumpNextAction(SessionPanel session, KeyMapper keyMap) {
-    super(session,
-        JUMP_NEXT.mnemonic,
-        KeyStroke.getKeyStroke(KeyEvent.VK_PAGE_UP, KeyEvent.ALT_MASK),
-        keyMap);
-  }
+public JumpNextAction(SessionPanel session, KeyMapper keyMap) {
+      super(session,
+    		  TN5250jConstants.MNEMONIC_JUMP_NEXT,
+            KeyStroke.getKeyStroke(KeyEvent.VK_PAGE_UP,KeyEvent.ALT_MASK),
+            keyMap);
 
-  public void actionPerformed(ActionEvent e) {
-    session.nextSession();
-  }
+   }
+
+   public void actionPerformed(ActionEvent e) {
+
+      session.nextSession();
+   }
 }

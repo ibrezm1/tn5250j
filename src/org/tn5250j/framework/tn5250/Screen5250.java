@@ -35,12 +35,39 @@ import java.util.Vector;
 
 import org.tn5250j.TN5250jConstants;
 import org.tn5250j.event.ScreenListener;
-import org.tn5250j.keyboard.KeyMnemonic;
-import org.tn5250j.keyboard.KeyMnemonicResolver;
 import org.tn5250j.tools.logging.TN5250jLogFactory;
 import org.tn5250j.tools.logging.TN5250jLogger;
 
 public class Screen5250 {
+
+	private ScreenFields screenFields;
+	private int lastAttr;
+	private int lastPos;
+	private int lenScreen;
+	private KeyStrokenizer strokenizer;
+	private tnvt sessionVT;
+	private int numRows = 0;
+	private int numCols = 0;
+	protected static final int initAttr = 32;
+	protected static final char initChar = 0;
+	public boolean cursorActive = false;
+	public boolean cursorShown = false;
+	protected boolean insertMode = false;
+	private boolean keyProcessed = false;
+	private Rect dirtyScreen = new Rect();
+
+	public int homePos = 0;
+	public int saveHomePos = 0;
+	private String bufferedKeys;
+	public boolean pendingInsert = false;
+
+	public final static byte STATUS_SYSTEM = 1;
+	public final static byte STATUS_ERROR_CODE = 2;
+	public final static byte STATUS_VALUE_ON = 1;
+	public final static byte STATUS_VALUE_OFF = 2;
+
+	private StringBuffer hsMore = new StringBuffer("More...");
+	private StringBuffer hsBottom = new StringBuffer("Bottom");
 
 	// error codes to be sent to the host on an error
 	private final static int ERR_CURSOR_PROTECTED = 0x05;
@@ -54,46 +81,13 @@ public class Screen5250 {
 	private final static int ERR_ENTER_NO_ALLOWED = 0x20;
 	private final static int ERR_MANDITORY_ENTER = 0x21;
 
-	final static byte STATUS_SYSTEM = 1;
-	final static byte STATUS_ERROR_CODE = 2;
-	final static byte STATUS_VALUE_ON = 1;
-	final static byte STATUS_VALUE_OFF = 2;
-
-	final static int initAttr = 32;
-	final static char initChar = 0;
-
-	private final KeyMnemonicResolver keyMnemonicResolver = new KeyMnemonicResolver();
-	private final TN5250jLogger log = TN5250jLogFactory.getLogger(this.getClass());
-
-	private ScreenFields screenFields;
-	private int lastAttr;
-	private int lastPos;
-	private int lenScreen;
-	private KeyStrokenizer strokenizer;
-	private tnvt sessionVT;
-	private int numRows = 0;
-	private int numCols = 0;
-
-	public boolean cursorActive = false;
-	public boolean cursorShown = false;
-	private boolean keyProcessed = false;
-	private Rect dirtyScreen = new Rect();
-
-	public int homePos = 0;
-	private int saveHomePos = 0;
-	private String bufferedKeys;
-	private boolean pendingInsert = false;
-
-	private StringBuffer hsMore = new StringBuffer("More...");
-	private StringBuffer hsBottom = new StringBuffer("Bottom");
-
 	private boolean guiInterface = false;
 	private boolean resetRequired = true;
 	private boolean backspaceError = true;
 	private boolean feError;
 
 	// vector of listeners for changes to the screen.
-	private Vector<ScreenListener> screenListeners = null;
+	Vector<ScreenListener> listeners = null;
 
 	// Operator Information Area
 	private ScreenOIA oia;
@@ -103,6 +97,8 @@ public class Screen5250 {
 
 	//Added by Barry
 	private StringBuffer keybuf;
+
+	private TN5250jLogger log = TN5250jLogFactory.getLogger(this.getClass());
 
 	public Screen5250() {
 
@@ -193,7 +189,7 @@ public class Screen5250 {
 
 	/**
 	 * Copy & Paste support
-	 *
+	 * 
 	 * @see {@link #pasteText(String, boolean)}
 	 * @see {@link #copyTextField(int)}
 	 */
@@ -230,9 +226,9 @@ public class Screen5250 {
 
 	/**
 	 * Copy & Paste support
-	 *
+	 * 
 	 * @param content
-	 * @param special
+	 * @see {@link #copyText(Rectangle)}
 	 */
 	public final void pasteText(String content, boolean special) {
 		if (log.isDebugEnabled()) {
@@ -319,9 +315,10 @@ public class Screen5250 {
 
 	/**
 	 * Copy & Paste support
-	 *
+	 * 
 	 * @param position
 	 * @return
+	 * @see {@link #copyText(int)}
 	 */
 	public final String copyTextField(int position) {
 		screenFields.saveCurrentField();
@@ -332,14 +329,26 @@ public class Screen5250 {
 	}
 
 	/**
-	 * @param formatOption formatting option to use
+	 *
+	 * Copy & Paste end code
+	 *
+	 */
+
+	/**
+	 * Sum them
+	 *
+	 * @param which
+	 *            formatting option to use
 	 * @return vector string of numberic values
 	 */
-	public final Vector<Double> sumThem(boolean formatOption, Rect area) {
+	public final Vector<Double> sumThem(boolean which, Rect area) {
 
 		StringBuilder sb = new StringBuilder();
 		Rect workR = new Rect();
 		workR.setBounds(area);
+
+		//      gui.rubberband.reset();
+		//      gui.repaint();
 
 		log.debug("Summing");
 
@@ -348,7 +357,7 @@ public class Screen5250 {
 
 		DecimalFormatSymbols dfs = df.getDecimalFormatSymbols();
 
-		if (formatOption) {
+		if (which) {
 			dfs.setDecimalSeparator('.');
 			dfs.setGroupingSeparator(',');
 		} else {
@@ -392,7 +401,9 @@ public class Screen5250 {
 				}
 				try {
 					Number n = df.parse(sb.toString());
-					sumVector.add(n.doubleValue());
+					//               System.out.println(s + " " + n.doubleValue());
+
+					sumVector.add(new Double(n.doubleValue()));
 					sum += n.doubleValue();
 				} catch (ParseException pe) {
 					log.warn(pe.getMessage() + " at "
@@ -445,6 +456,10 @@ public class Screen5250 {
 					if (planes.getChar(pos + 1) != '='
 						&& planes.getChar(pos + 1) != '.'
 							&& planes.getChar(pos + 1) != '/') {
+						//                     System.out.println(" Hotspot clicked!!! we will send
+						// characters " +
+						//                                    screen[pos].getChar() +
+						//                                    screen[pos+1].getChar());
 						aid.append(planes.getChar(pos));
 						aid.append(planes.getChar(pos + 1));
 					} else {
@@ -540,6 +555,26 @@ public class Screen5250 {
 		sessionVT = v;
 	}
 
+	/**
+	 * Searches the mnemonicData array looking for the specified string. If it
+	 * is found it will return the value associated from the mnemonicValue
+	 *
+	 * @see #sendKeys
+	 * @param mnem
+	 *            string mnemonic value
+	 * @return key value of Mnemonic
+	 */
+	private int getMnemonicValue(String mnem) {
+
+		for (int x = 0; x < mnemonicData.length; x++) {
+
+			if (mnemonicData[x].equals(mnem))
+				return mnemonicValue[x];
+		}
+		return 0;
+
+	}
+
 	protected void setPrehelpState(boolean setErrorCode, boolean lockKeyboard,
 			boolean unlockIfLocked) {
 		if (oia.isKeyBoardLocked() && unlockIfLocked)
@@ -558,6 +593,9 @@ public class Screen5250 {
 	 * @param activate
 	 */
 	public void setCursorActive(boolean activate) {
+
+		//      System.out.println("cursor active " + updateCursorLoc + " " +
+		// cursorActive + " " + activate);
 		if (cursorActive && !activate) {
 			setCursorOff();
 			cursorActive = activate;
@@ -569,22 +607,35 @@ public class Screen5250 {
 		}
 	}
 
+	/**
+	 * Set the cursor on
+	 */
 	public void setCursorOn() {
 		cursorShown = true;
 		updateCursorLoc();
 	}
 
+	/**
+	 * Set the cursor off
+	 */
 	public void setCursorOff() {
+
 		cursorShown = false;
 		updateCursorLoc();
+		//      System.out.println("cursor off " + updateCursorLoc + " " +
+		// cursorActive);
+
 	}
 
 	/**
 	 *
 	 */
 	private void updateCursorLoc() {
+
 		if (cursorActive) {
+
 			fireCursorChanged(3);
+
 		}
 	}
 
@@ -593,10 +644,6 @@ public class Screen5250 {
 		String result = this.keybuf.toString();
 		this.keybuf = new StringBuffer();
 		return result;
-	}
-
-	public synchronized void sendKeys(KeyMnemonic keyMnemonic) {
-		sendKeys(keyMnemonic.mnemonic);
 	}
 
 	/**
@@ -608,27 +655,318 @@ public class Screen5250 {
 	 *
 	 * These will be processed as if you had pressed these keys from the
 	 * keyboard. All the valid special key values are contained in the MNEMONIC
-	 * enumeration. See also {@link KeyMnemonic}
+	 * enumeration:
 	 *
-	 * @param text The string of characters to be sent
+	 * <table BORDER COLS=2 WIDTH="50%" >
+	 *
+	 * <tr>
+	 * <td>MNEMONIC_CLEAR</td>
+	 * <td>[clear]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_ENTER</td>
+	 * <td>[enter]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_HELP</td>
+	 * <td>[help]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PAGE_DOWN</td>
+	 * <td>[pgdown]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PAGE_UP</td>
+	 * <td>[pgup]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PRINT</td>
+	 * <td>[print]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF1</td>
+	 * <td>[pf1]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF2</td>
+	 * <td>[pf2]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF3</td>
+	 * <td>[pf3]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF4</td>
+	 * <td>[pf4]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF5</td>
+	 * <td>[pf5]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF6</td>
+	 * <td>[pf6]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF7</td>
+	 * <td>[pf7]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF8</td>
+	 * <td>[pf8]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF9</td>
+	 * <td>[pf9]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF10</td>
+	 * <td>[pf10]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF11</td>
+	 * <td>[pf11]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF12</td>
+	 * <td>[pf12]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF13</td>
+	 * <td>[pf13]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF14</td>
+	 * <td>[pf14]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF15</td>
+	 * <td>[pf15]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF16</td>
+	 * <td>[pf16]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF17</td>
+	 * <td>[pf17]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF18</td>
+	 * <td>[pf18]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF19</td>
+	 * <td>[pf19]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF20</td>
+	 * <td>[pf20]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF21</td>
+	 * <td>[pf21]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF22</td>
+	 * <td>[pf22]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF23</td>
+	 * <td>[pf23]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PF24</td>
+	 * <td>[pf24]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_BACK_SPACE</td>
+	 * <td>[backspace]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_BACK_TAB</td>
+	 * <td>[backtab]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_UP</td>
+	 * <td>[up]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_DOWN</td>
+	 * <td>[down]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_LEFT</td>
+	 * <td>[left]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_RIGHT</td>
+	 * <td>[right]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_DELETE</td>
+	 * <td>[delete]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_TAB</td>
+	 * <td>"[tab]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_END_OF_FIELD</td>
+	 * <td>[eof]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_ERASE_EOF</td>
+	 * <td>[eraseeof]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_ERASE_FIELD</td>
+	 * <td>[erasefld]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_INSERT</td>
+	 * <td>[insert]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_HOME</td>
+	 * <td>[home]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_KEYPAD0</td>
+	 * <td>[keypad0]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_KEYPAD1</td>
+	 * <td>[keypad1]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_KEYPAD2</td>
+	 * <td>[keypad2]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_KEYPAD3</td>
+	 * <td>[keypad3]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_KEYPAD4</td>
+	 * <td>[keypad4]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_KEYPAD5</td>
+	 * <td>[keypad5]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_KEYPAD6</td>
+	 * <td>[keypad6]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_KEYPAD7</td>
+	 * <td>[keypad7]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_KEYPAD8</td>
+	 * <td>[keypad8]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_KEYPAD9</td>
+	 * <td>[keypad9]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_KEYPAD_PERIOD</td>
+	 * <td>[keypad.]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_KEYPAD_COMMA</td>
+	 * <td>[keypad,]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_KEYPAD_MINUS</td>
+	 * <td>[keypad-]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_FIELD_EXIT</td>
+	 * <td>[fldext]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_FIELD_PLUS</td>
+	 * <td>[field+]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_FIELD_MINUS</td>
+	 * <td>[field-]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_BEGIN_OF_FIELD</td>
+	 * <td>[bof]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PA1</td>
+	 * <td>[pa1]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PA2</td>
+	 * <td>[pa2]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_PA3</td>
+	 * <td>[pa3]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_SYSREQ</td>
+	 * <td>[sysreq]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_RESET</td>
+	 * <td>[reset]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_ATTN</td>
+	 * <td>[attn]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_MARK_LEFT</td>
+	 * <td>[markleft]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_MARK_RIGHT</td>
+	 * <td>[markright]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_MARK_UP</td>
+	 * <td>[markup]</td>
+	 * </tr>
+	 * <tr>
+	 * <td>MNEMONIC_MARK_DOWN</td>
+	 * <td>[markdown]</td>
+	 * </tr>
+	 *
+	 * </table>
+	 *
+	 * @param text
+	 *            The string of characters to be sent
+	 *
 	 * @see #sendAid
+	 *
+	 * Added synchronized to fix a StringOutOfBounds error - Luc Gorren LDC
 	 */
 	public synchronized void sendKeys(String text) {
 
+		//      if (text == null) {
+		//         return;
+		//      }
 		this.keybuf.append(text);
 
 		if (isStatusErrorCode() && !resetRequired) {
 			setCursorActive(false);
-			simulateMnemonic(KeyMnemonic.RESET.value);
+			simulateMnemonic(getMnemonicValue("[reset]"));
 			setCursorActive(true);
 		}
 
 		if (oia.isKeyBoardLocked()) {
-			if (KeyMnemonic.RESET.mnemonic.equals(text)
-					|| KeyMnemonic.SYSREQ.mnemonic.equals(text)
-					|| KeyMnemonic.ATTN.mnemonic.equals(text)) {
+			if (text.equals("[reset]") || text.equals("[sysreq]")
+					|| text.equals("[attn]")) {
 				setCursorActive(false);
-				simulateMnemonic(keyMnemonicResolver.findMnemonicValue(text));
+				simulateMnemonic(getMnemonicValue(text));
 				setCursorActive(true);
 
 			} else {
@@ -663,17 +1001,25 @@ public class Screen5250 {
 			//   current field to that field
 			isInField(lastPos, true);
 			if (text.length() == 1 && !text.equals("[") && !text.equals("]")) {
+				//               setCursorOff2();
 				setCursorActive(false);
 				simulateKeyStroke(text.charAt(0));
 				setCursorActive(true);
+				//               setCursorOn2();
+				//                     System.out.println(" text one");
+
 			} else {
 
 				strokenizer.setKeyStrokes(text);
 				String s;
 				boolean done = false;
 
+				//            setCursorOff2();
 				setCursorActive(false);
 				while (!done) {
+					//            while (strokenizer.hasMoreKeyStrokes() && !keyboardLocked
+					// &&
+					//                        !isStatusErrorCode() && !done) {
 					if (strokenizer.hasMoreKeyStrokes()) {
 
 						// check to see if position is in a field and if it is
@@ -682,9 +1028,27 @@ public class Screen5250 {
 						isInField(lastPos, true);
 						s = strokenizer.nextKeyStroke();
 						if (s.length() == 1) {
+							//                  setCursorOn();
+							//                  if (!keysBuffered) {
+							//                     System.out.println(" s two" + s);
+							//                     setCursorOn();
+							//                  }
+
+							//                  try { new Thread().sleep(400);} catch
+							// (InterruptedException ie) {}
 							simulateKeyStroke(s.charAt(0));
+							//                     System.out.println(" s two " + s + " " +
+							// cursorActive);
+							//                  if (cursorActive && !keysBuffered) {
+							//                     System.out.println(" s two" + s);
+							//                     setCursorOn();
+							//                  }
 						} else {
-							simulateMnemonic(keyMnemonicResolver.findMnemonicValue(s));
+							simulateMnemonic(getMnemonicValue(s));
+							//                  if (!cursorActive && !keysBuffered) {
+							//                     System.out.println(" m one");
+							//                     setCursorOn();
+							//                  }
 						}
 
 						if (oia.isKeyBoardLocked()) {
@@ -698,7 +1062,11 @@ public class Screen5250 {
 							done = true;
 						}
 
-					}	else {
+					}
+
+					else {
+						//                  setCursorActive(true);
+						//                  setCursorOn();
 						done = true;
 					}
 				}
@@ -1527,7 +1895,7 @@ public class Screen5250 {
 
 			return endPos;
 
-		}
+		} 
 		screenFields.getCurrentField().getKeyPos(endPos);
 		if (posSpace) screenFields.getCurrentField().changePos(+1);
 		return screenFields.getCurrentFieldPos();
@@ -2137,9 +2505,13 @@ public class Screen5250 {
 	 * @param bufferLength
 	 * @param plane
 	 * @return The number of characters copied to the buffer
+	 * @throws OhioException
 	 */
-	public synchronized int GetScreen(char buffer[], int bufferLength, int plane) {
+	public synchronized int GetScreen(char buffer[], int bufferLength, int plane)
+	//                                       throws OhioException {
+	{
 		return GetScreen(buffer,bufferLength,0,lenScreen,plane);
+
 	}
 
 	/**
@@ -2164,8 +2536,13 @@ public class Screen5250 {
 	 * @param length
 	 * @param plane
 	 * @return The number of characters copied to the buffer
+	 * @throws OhioException
 	 */
-	public synchronized int GetScreen(char buffer[], int bufferLength, int from, int length, int plane)	{
+	public synchronized int GetScreen(char buffer[], int bufferLength, int from,
+			int length, int plane)
+	//                                    throws OhioException {
+	{
+
 		return planes.GetScreen(buffer,bufferLength, from, length, plane);
 	}
 
@@ -2193,8 +2570,12 @@ public class Screen5250 {
 	 * @param length
 	 * @param plane
 	 * @return The number of characters copied to the buffer.
+	 * @throws OhioException
 	 */
-	public synchronized int GetScreen(char buffer[], int bufferLength, int row,	int col, int length, int plane)	{
+	public synchronized int GetScreen(char buffer[], int bufferLength, int row,
+			int col, int length, int plane)
+	//                                       throws OhioException {
+	{
 		// Call GetScreen function after converting row and column to
 		// a position.
 		return planes.GetScreen(buffer,bufferLength, row, col, length, plane);
@@ -2228,8 +2609,12 @@ public class Screen5250 {
 	 * @param endPos
 	 * @param plane
 	 * @return The number of characters copied to the buffer
+	 * @throws OhioException
 	 */
-	public synchronized int GetScreenRect(char buffer[], int bufferLength, int startPos, int endPos, int plane) {
+	public synchronized int GetScreenRect(char buffer[], int bufferLength,
+			int startPos, int endPos, int plane)
+	//                                             throws OhioException {
+	{
 		return planes.GetScreenRect(buffer, bufferLength, startPos, endPos, plane);
 
 	}
@@ -2264,9 +2649,13 @@ public class Screen5250 {
 	 * @param endCol
 	 * @param plane
 	 * @return The number characters copied to the buffer
+	 * @throws OhioException
 	 */
 	public synchronized int GetScreenRect(char buffer[], int bufferLength,
-			int startRow, int startCol,	int endRow, int endCol, int plane) {
+			int startRow, int startCol,
+			int endRow, int endCol, int plane)
+	//                                             throws OhioException {
+	{
 
 		return planes.GetScreenRect(buffer, bufferLength, startRow, startCol, endRow,
 				endCol, plane);
@@ -2277,33 +2666,38 @@ public class Screen5250 {
 	}
 
 	protected synchronized void setScreenData(String text, int location) {
+		//                                             throws OhioException {
 
 		if (location < 0 || location > lenScreen) {
 			return;
+			//         throw new OhioException(sessionVT.getSessionConfiguration(),
+			//         				OhioScreen5250.class.getName(), "osohio.screen.ohio00300", 1);
 		}
+
+		int pos = location;
 
 		int l = text.length();
 		boolean updated = false;
 		boolean flag = false;
 		int x =0;
 		for (; x < l; x++) {
-			if (isInField(location + x,true)) {
+			if (isInField(pos + x,true)) {
 				if (!screenFields.getCurrentField().isBypassField()) {
 					if (!flag) {
 						screenFields.getCurrentField().setMDT();
 						updated = true;
-						resetDirty(location + x);
+						resetDirty(pos + x);
 						screenFields.setMasterMDT();
 						flag = true;
 					}
 
-					planes.screen[location + x] = text.charAt(x);
-					setDirty(location + x);
+					planes.screen[pos + x] = text.charAt(x);
+					setDirty(pos + x);
 				}
 			}
 
 		}
-		lastPos = location + x;
+		lastPos = pos + x;
 		if (updated) {
 			fireScreenChanged(1);
 		}
@@ -2359,12 +2753,13 @@ public class Screen5250 {
 	 * Convenience method to set the field object passed as the currect working
 	 * screen field
 	 *
-	 * @param screenField
+	 * @param f
 	 * @return true or false whether it was sucessful
+	 * @see org.tn5250j.ScreenField
 	 */
-	protected boolean gotoField(ScreenField screenField) {
-		if (screenField != null) {
-			goto_XY(screenField.startPos());
+	protected boolean gotoField(ScreenField f) {
+		if (f != null) {
+			goto_XY(f.startPos());
 			return true;
 		}
 		return false;
@@ -2426,6 +2821,8 @@ public class Screen5250 {
 
 	/**
 	 * Convinience class to position to the next field on the screen.
+	 *
+	 * @see org.tn5250j.ScreenFields
 	 */
 	private void gotoFieldNext() {
 
@@ -2440,6 +2837,8 @@ public class Screen5250 {
 
 	/**
 	 * Convinience class to position to the previous field on the screen.
+	 *
+	 * @see org.tn5250j.ScreenFields
 	 */
 	private void gotoFieldPrev() {
 
@@ -2452,6 +2851,24 @@ public class Screen5250 {
 			setFieldHighlighted(screenFields.getCurrentField());
 
 	}
+
+	/* *** NEVER USED LOCALLY ************************************************** */
+	//	/**
+	//	 * Used to restrict the cursor to a particular position on the screen. Used
+	//	 * in combination with windows to restrict the cursor to the active window
+	//	 * show on the screen.
+	//	 *
+	//	 * Not supported yet. Please implement me :-(
+	//	 *
+	//	 * @param depth
+	//	 * @param width
+	//	 */
+	//	protected void setRestrictCursor(int depth, int width) {
+	//
+	//		restrictCursor = true;
+	//		//      restriction
+	//
+	//	}
 
 	/**
 	 * Creates a window on the screen
@@ -2738,7 +3155,7 @@ public class Screen5250 {
 		//    0 - up
 		//    1 - down
 		int updown = direction & 0x80;
-		final int lines = direction & 0x7F;
+		final int lines = direction & 0x7F; 
 
 		// calculate the reference points for the move.
 		int start = this.getPos(topLine - 1, 0);
@@ -2766,7 +3183,7 @@ public class Screen5250 {
 					//Do nothing ... tooo small!!!
 				} else {
 					planes.setChar(x - lines  * numCols, planes.getChar(x));
-					//and clear
+					//and clear 
 					planes.setChar(x, ' ');
 				}
 			}
@@ -2872,12 +3289,100 @@ public class Screen5250 {
 
 			lastPos = sf.startPos();
 		}
+
+		//      if (fcw1 != 0 || fcw2 != 0) {
+
+		//         System.out.println("lr = " + lastRow + " lc = " + lastCol + " " +
+		// sf.toString());
+		//      }
+		sf = null;
+
 	}
+
+
+	//      public void addChoiceField(int attr, int len, int ffw1, int ffw2, int
+	// fcw1, int fcw2) {
+	//
+	//         lastAttr = attr;
+	//
+	//         screen[lastPos].setCharAndAttr(initChar,lastAttr,true);
+	//         setDirty(lastPos);
+	//
+	//         advancePos();
+	//
+	//         boolean found = false;
+	//         ScreenField sf = null;
+	//
+	//         // from 14.6.12 for Start of Field Order 5940 function manual
+	//         // examine the format table for an entry that begins at the current
+	//         // starting address plus 1.
+	//         for (int x = 0;x < sizeFields; x++) {
+	//            sf = screenFields[x];
+	//
+	//            if (lastPos == sf.startPos()) {
+	//               screenFields.getCurrentField() = sf;
+	//               screenFields.getCurrentField().setFFWs(ffw1,ffw2);
+	//               found = true;
+	//            }
+	//
+	//         }
+	//
+	//         if (!found) {
+	//            sf =
+	// setField(attr,getRow(lastPos),getCol(lastPos),len,ffw1,ffw2,fcw1,fcw2);
+	//
+	//            lastPos = sf.startPos();
+	//            int x = len;
+	//
+	//            boolean gui = guiInterface;
+	//            if (sf.isBypassField())
+	//               gui = false;
+	//
+	//            while (x-- > 0) {
+	//
+	//               if (screen[lastPos].getChar() == 0)
+	//                  screen[lastPos].setCharAndAttr(' ',lastAttr,false);
+	//               else
+	//                  screen[lastPos].setAttribute(lastAttr);
+	//
+	//               if (gui)
+	//                  screen[lastPos].setUseGUI(FIELD_MIDDLE);
+	//
+	//               advancePos();
+	//
+	//            }
+	//
+	//            if (gui)
+	//               if (len > 1) {
+	//                  screen[sf.startPos()].setUseGUI(FIELD_LEFT);
+	//                  if (lastPos > 0)
+	//                     screen[lastPos-1].setUseGUI(FIELD_RIGHT);
+	//                  else
+	//                     screen[lastPos].setUseGUI(FIELD_RIGHT);
+	//
+	//               }
+	//               else
+	//                  screen[lastPos-1].setUseGUI(FIELD_ONE);
+	//
+	//            setEndingAttr(initAttr);
+	//
+	//            lastPos = sf.startPos();
+	//         }
+	//
+	//   // if (fcw1 != 0 || fcw2 != 0) {
+	//   //
+	//   // System.out.println("lr = " + lastRow + " lc = " + lastCol + " " +
+	// sf.toString());
+	//   // }
+	//         sf = null;
+	//
+	//      }
 
 	/**
 	 * Return the fields that are contained in the Field Format Table
 	 *
 	 * @return ScreenFields object
+	 * @see org.tn5250j.ScreenFields
 	 */
 	public ScreenFields getScreenFields() {
 		return screenFields;
@@ -2938,15 +3443,22 @@ public class Screen5250 {
 	 * Draws the field on the screen. Used to redraw or change the attributes of
 	 * the field.
 	 *
-	 * @param screenField Field to be redrawn
+	 * @param sf -
+	 *            Field to be redrawn
+	 * @see org.tn5250j.ScreenField.java
 	 */
-	protected void drawField(ScreenField screenField) {
-		int pos = screenField.startPos();
-		int x = screenField.length;
+	protected void drawField(ScreenField sf) {
+
+		int pos = sf.startPos();
+
+		int x = sf.length;
+
 		while (x-- > 0) {
 			setDirty(pos++);
 		}
+
 		updateDirty();
+
 	}
 
 	/**
@@ -3034,6 +3546,15 @@ public class Screen5250 {
 
 		advancePos();
 		int pos = lastPos;
+
+		int times = 0;
+		//      sattr = screen[lastPos].getCharAttr();
+		//         System.out.println(" next position after change " + sattr + " last
+		// attr " + lastAttr +
+		//                     " at " + (this.getRow(lastPos) + 1) + "," + (this.getCol(lastPos) +
+		// 1) +
+		//                     " attr place " + screen[lastPos].isAttributePlace());
+
 		while (planes.getCharAttr(lastPos) != lastAttr
 				&& !planes.isAttributePlace(lastPos)) {
 
@@ -3044,6 +3565,8 @@ public class Screen5250 {
 					planes.setUseGUI(lastPos,NO_GUI);
 			}
 			setDirty(lastPos);
+
+			times++;
 			advancePos();
 		}
 
@@ -3103,6 +3626,13 @@ public class Screen5250 {
 
 	}
 
+	/* *** NEVER USED LOCALLY ************************************************** */
+	//	private void setDirty(int row, int col) {
+	//
+	//		setDirty(getPos(row, col));
+	//
+	//	}
+
 	private void resetDirty(int pos) {
 
 		dirtyScreen.setBounds(pos,pos,0,0);
@@ -3134,6 +3664,12 @@ public class Screen5250 {
 			lastPos = lenScreen + lastPos;
 		if (lastPos > lenScreen - 1)
 			lastPos = lastPos - lenScreen;
+
+		//      System.out.println(lastRow + "," + ((lastPos) / numCols) + "," +
+		//                         lastCol + "," + ((lastPos) % numCols) + "," +
+		//                         ((lastRow * numCols) + lastCol) + "," +
+		//                         (lastPos));
+
 	}
 
 	protected void goHome() {
@@ -3325,10 +3861,10 @@ public class Screen5250 {
 	 */
 	private void fireScreenChanged(int which, int startRow, int startCol,
 			int endRow, int endCol) {
-		if (screenListeners != null) {
+		if (listeners != null) {
 			// Patch below contributed by Mitch Blevins
 			//int size = listeners.size();
-			Vector<ScreenListener> lc = new Vector<ScreenListener>(screenListeners);
+			Vector<ScreenListener> lc = new Vector<ScreenListener>(listeners);
 			int size = lc.size();
 			for (int i = 0; i < size; i++) {
 				//ScreenListener target =
@@ -3363,10 +3899,13 @@ public class Screen5250 {
 		int startRow = getRow(lastPos);
 		int startCol = getCol(lastPos);
 
-		if (screenListeners != null) {
-			Vector<ScreenListener> lc = new Vector<ScreenListener>(screenListeners);
-			for (int i = 0, len = lc.size(); i < len; i++) {
-				ScreenListener target = lc.elementAt(i);
+		if (listeners != null) {
+			Vector<ScreenListener> lc = new Vector<ScreenListener>(listeners);
+			//int size = listeners.size();
+			int size = lc.size();
+			for (int i = 0; i < size; i++) {
+				ScreenListener target =
+					lc.elementAt(i);
 				target.onScreenChanged(update,startRow,startCol,startRow,startCol);
 			}
 		}
@@ -3377,9 +3916,12 @@ public class Screen5250 {
 	 *
 	 */
 	private void fireScreenSizeChanged() {
-		if (screenListeners != null) {
-			Vector<ScreenListener> lc = new Vector<ScreenListener>(screenListeners);
-			for (int i = 0, size = lc.size(); i < size; i++) {
+
+		if (listeners != null) {
+			Vector<ScreenListener> lc = new Vector<ScreenListener>(listeners);
+			//int size = listeners.size();
+			int size = lc.size();
+			for (int i = 0; i < size; i++) {
 				ScreenListener target =
 					lc.elementAt(i);
 				target.onScreenSizeChanged(numRows,numCols);
@@ -3403,10 +3945,10 @@ public class Screen5250 {
 	 */
 	public void addScreenListener(ScreenListener listener) {
 
-		if (screenListeners == null) {
-			screenListeners = new java.util.Vector<ScreenListener>(3);
+		if (listeners == null) {
+			listeners = new java.util.Vector<ScreenListener>(3);
 		}
-		screenListeners.addElement(listener);
+		listeners.addElement(listener);
 
 	}
 
@@ -3417,10 +3959,10 @@ public class Screen5250 {
 	 */
 	public void removeScreenListener(ScreenListener listener) {
 
-		if (screenListeners == null) {
+		if (listeners == null) {
 			return;
 		}
-		screenListeners.removeElement(listener);
+		listeners.removeElement(listener);
 	}
 
 	/**

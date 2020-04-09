@@ -1,7 +1,7 @@
 package org.tn5250j.event;
 
 /*
- * @(#)SessionConfigListener.java
+ * @(#)SessionListener.java
  * Copyright:    Copyright (c) 2001
  *
  * This program is free software; you can redistribute it and/or modify
@@ -23,10 +23,5 @@ package org.tn5250j.event;
 
 public interface SessionConfigListener {
 
-  /**
-   * Update the configuration settings
-   *
-   * @param sessionConfigEvent sessionConfigEvent
-   */
-  public void onConfigChanged(SessionConfigEvent sessionConfigEvent);
+   public void onConfigChanged(SessionConfigEvent changeEvent);
 }
